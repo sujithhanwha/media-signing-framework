@@ -29,7 +29,8 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 signer -c h264 video.mp4"
-    echo "  $0 ffmpeg-signer video.mp4"
+    echo "  $0 ffmpeg-signer video.mp4                      # H.264 (default)"
+    echo "  $0 ffmpeg-signer -c h265 video.mp4              # H.265"
     echo "  $0 validator -C ca.pem -c h264 signed_video.mp4"
     exit 1
 }
