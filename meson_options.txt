@@ -14,6 +14,10 @@ option('validator',
   type : 'boolean',
   value : false,
   description : 'Builds the validator app')
+option('ffmpeg_signer',
+  type : 'boolean',
+  value : false,
+  description : 'Builds the FFmpeg-based signer app')
 option('build_all_apps',
   type : 'boolean',
   value : false,

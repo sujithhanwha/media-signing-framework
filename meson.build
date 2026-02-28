@@ -63,7 +63,7 @@ pkgconfig.generate(
     description : 'ONVIF Media Signing Framework',
 )
 
-if (get_option('signer') or get_option('validator') or get_option('build_all_apps'))
+if (get_option('signer') or get_option('validator') or get_option('ffmpeg_signer') or get_option('build_all_apps'))
   subdir('examples')
 else
   subdir('tests')
