@@ -539,6 +539,53 @@ static char *generate_output_filename(const char *input_filename) {
   return output;
 }
 
+static int run_signing_process(SigningContext *ctx, const char *input_filename, 
+                                const char *output_filename, bool is_h265) {
+  // Initialize signing context
+  if (!init_signing_context(ctx, is_h265)) {
+    return 1;
+  }
+
+  // Open input file
+  if (!open_input_file(ctx, input_filename)) {
+    return 1;
+  }
+
+  // Setup output file
+  if (!setup_output_file(ctx, output_filename)) {
+    return 1;
+  }
+
+  printf("\nProcessing video...\n");
+
+  // Process all packets
+  AVPacket *pkt = av_packet_alloc();
+  if (!pkt) {
+    fprintf(stderr, "Failed to allocate packet\n");
+    return 1;
+  }
+
+  while (av_read_frame(ctx->input_ctx, pkt) >= 0) {
+    if (!process_packet(ctx, pkt)) {
+      av_packet_unref(pkt);
+      av_packet_free(&pkt);
+      return 1;
+    }
+    av_packet_unref(pkt);
+  }
+
+  av_packet_free(&pkt);
+
+  // Write trailer
+  av_write_trailer(ctx->output_ctx);
+
+  printf("\nSigning completed successfully!\n");
+  printf("Total GOPs signed: %d\n", ctx->gop_counter);
+  printf("Output file: %s\n", output_filename);
+
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     print_usage(argv[0]);
@@ -599,57 +646,16 @@ int main(int argc, char *argv[]) {
 
   SigningContext ctx = {0};
   ctx.is_h265 = is_h265;
-  int exit_code = 1;
 
   // Initialize FFmpeg
   av_log_set_level(AV_LOG_WARNING);
 
-  // Initialize signing context
-  if (!init_signing_context(&ctx, is_h265)) {
-    goto cleanup;
-  }
+  // Run the signing process
+  int exit_code = run_signing_process(&ctx, input_filename, output_filename, is_h265);
 
-  // Open input file
-  if (!open_input_file(&ctx, input_filename)) {
-    goto cleanup;
-  }
-
-  // Setup output file
-  if (!setup_output_file(&ctx, output_filename)) {
-    goto cleanup;
-  }
-
-  printf("\nProcessing video...\n");
-
-  // Process all packets
-  AVPacket *pkt = av_packet_alloc();
-  if (!pkt) {
-    fprintf(stderr, "Failed to allocate packet\n");
-    goto cleanup;
-  }
-
-  while (av_read_frame(ctx.input_ctx, pkt) >= 0) {
-    if (!process_packet(&ctx, pkt)) {
-      av_packet_unref(pkt);
-      av_packet_free(&pkt);
-      goto cleanup;
-    }
-    av_packet_unref(pkt);
-  }
-
-  av_packet_free(&pkt);
-
-  // Write trailer
-  av_write_trailer(ctx.output_ctx);
-
-  printf("\nSigning completed successfully!\n");
-  printf("Total GOPs signed: %d\n", ctx.gop_counter);
-  printf("Output file: %s\n", output_filename);
-
-  exit_code = 0;
-
-cleanup:
+  // Cleanup resources
   cleanup_signing_context(&ctx);
   free(output_filename);
+  
   return exit_code;
 }
