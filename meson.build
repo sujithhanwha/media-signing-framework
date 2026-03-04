@@ -38,6 +38,12 @@ configure_file(output : 'media-signing-framework.pc', configuration : cdata)
 
 configinc = include_directories('.')
 
+# Import filesystem module
+fs = import('fs')
+
+# Build third-party dependencies (FFmpeg)
+subdir('third_party')
+
 subdir('lib')
 
 # Create a shared library and generate a pkgconfig

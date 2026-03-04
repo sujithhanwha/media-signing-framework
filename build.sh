@@ -38,6 +38,7 @@ BUILD_FFMPEG_SIGNER=false
 DEBUG_PRINTS=false
 CLEAN=false
 INSTALL_PREFIX=""
+LOCAL_FFMPEG=true  # Default to using local FFmpeg
 
 usage() {
     echo "Usage: $0 [OPTIONS]"
@@ -50,6 +51,8 @@ usage() {
     echo "  -d, --debug           Enable debug prints"
     echo "  -c, --clean           Clean build directory before building"
     echo "  -p, --prefix PATH     Installation prefix (default: none)"
+    echo "  --local-ffmpeg        Use local FFmpeg build (default)"
+    echo "  --system-ffmpeg       Use system FFmpeg instead of local build"
     echo "  -h, --help            Show this help message"
     echo ""
     exit 0
@@ -84,6 +87,14 @@ while [[ $# -gt 0 ]]; do
         -p|--prefix)
             INSTALL_PREFIX="$2"
             shift 2
+            ;;
+        --local-ffmpeg)
+            LOCAL_FFMPEG=true
+            shift
+            ;;
+        --system-ffmpeg)
+            LOCAL_FFMPEG=false
+            shift
             ;;
         -h|--help)
             usage
@@ -125,12 +136,25 @@ fi
 
 # Check for FFmpeg (only if building FFmpeg signer)
 if [ "$BUILD_APPS" = true ] || [ "$BUILD_FFMPEG_SIGNER" = true ]; then
-    if ! pkg-config --exists libavformat libavcodec libavutil; then
-        print_warning "FFmpeg libraries not found. Skipping FFmpeg signer build."
-        print_warning "To build FFmpeg signer, install: libavformat-dev libavcodec-dev libavutil-dev"
-        BUILD_FFMPEG_SIGNER=false
-        if [ "$BUILD_APPS" != true ]; then
+    if [ "$LOCAL_FFMPEG" = false ]; then
+        # Using system FFmpeg - check if it's available
+        if ! pkg-config --exists libavformat libavcodec libavutil; then
+            print_error "System FFmpeg libraries not found."
+            print_info "Either install FFmpeg packages or use --local-ffmpeg to build locally."
+            print_info "  Install: libavformat-dev libavcodec-dev libavutil-dev"
             exit 1
+        fi
+    else
+        # Using local FFmpeg - check if it needs to be built
+        if [ ! -d "${SCRIPT_DIR}/third_party/install" ]; then
+            print_info "Local FFmpeg not found. Building FFmpeg..."
+            bash "${SCRIPT_DIR}/third_party/build_ffmpeg.sh"
+            if [ $? -ne 0 ]; then
+                print_error "Failed to build FFmpeg."
+                exit 1
+            fi
+        else
+            print_info "Using existing local FFmpeg installation."
         fi
     fi
 fi
@@ -141,6 +165,11 @@ print_info "All dependencies found."
 if [ "$CLEAN" = true ]; then
     print_info "Cleaning build directory..."
     rm -rf "$BUILD_DIR"
+    # Also clean FFmpeg if using local build
+    if [ "$LOCAL_FFMPEG" = true ]; then
+        print_info "Cleaning local FFmpeg build..."
+        rm -rf "${SCRIPT_DIR}/third_party/src" "${SCRIPT_DIR}/third_party/install"
+    fi
 fi
 
 # Build meson options
@@ -166,6 +195,13 @@ fi
 
 if [ -n "$INSTALL_PREFIX" ]; then
     MESON_OPTS="$MESON_OPTS --prefix=$INSTALL_PREFIX"
+fi
+
+# Set local_ffmpeg option
+if [ "$LOCAL_FFMPEG" = true ]; then
+    MESON_OPTS="$MESON_OPTS -Dlocal_ffmpeg=true"
+else
+    MESON_OPTS="$MESON_OPTS -Dlocal_ffmpeg=false"
 fi
 
 # Configure with meson
@@ -208,6 +244,9 @@ echo "  ${BUILD_DIR}/examples/apps/signer/signer -c h264 video.mp4"
 echo ""
 echo "To run the FFmpeg signer:"
 echo "  export LD_LIBRARY_PATH=${BUILD_DIR}:\$LD_LIBRARY_PATH"
+if [ "$LOCAL_FFMPEG" = true ]; then
+    echo "  # (Uses local FFmpeg from third_party/install - no additional setup needed)"
+fi
 echo "  ${BUILD_DIR}/examples/apps/ffmpeg-signer/ffmpeg-signer video.mp4"
 echo ""
 print_info "To run the applications, set the following environment variables:"

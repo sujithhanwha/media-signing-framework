@@ -5,10 +5,18 @@ This guide provides step-by-step instructions for building the ONVIF Media Signi
 ## Table of Contents
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+  - [Using the Build Script (Recommended)](#using-the-build-script-recommended)
+  - [Manual Build](#manual-build)
+  - [Build Script vs Manual Meson](#build-script-vs-manual-meson)
 - [Detailed Build Instructions](#detailed-build-instructions)
 - [Build Options](#build-options)
+- [Local FFmpeg Build](#local-ffmpeg-build)
 - [Running the Applications](#running-the-applications)
 - [Troubleshooting](#troubleshooting)
+- [Building for Production](#building-for-production)
+- [Cross-Compilation](#cross-compilation)
+- [Quick Reference](#quick-reference)
+- [Next Steps](#next-steps)
 
 ---
 
@@ -29,6 +37,7 @@ This guide provides step-by-step instructions for building the ONVIF Media Signi
   - libavformat
   - libavcodec
   - libavutil
+  - **Note**: FFmpeg can be automatically downloaded and built locally (see [Local FFmpeg Build](#local-ffmpeg-build))
 - **libcheck** - For running unit tests
 - **GLib 2.0** - For threaded signing plugin
 
@@ -82,8 +91,14 @@ sudo dnf install -y \
 The easiest way to build the project is using the provided build script:
 
 ```bash
-# Build library and all applications
+# Build library and all applications (with local FFmpeg by default)
 ./build.sh --all-apps
+
+# Build FFmpeg signer only (with local FFmpeg)
+./build.sh --ffmpeg-signer
+
+# Build with system FFmpeg instead
+./build.sh --ffmpeg-signer --system-ffmpeg
 
 # Build library only
 ./build.sh
@@ -91,9 +106,11 @@ The easiest way to build the project is using the provided build script:
 # Build with debug output
 ./build.sh --all-apps --debug
 
-# Clean build
+# Clean build (also cleans local FFmpeg if using it)
 ./build.sh --all-apps --clean
 ```
+
+**Note**: By default, the FFmpeg signer is built with local FFmpeg (automatically downloaded and compiled). Use `--system-ffmpeg` to use system FFmpeg packages instead.
 
 ### Manual Build
 
@@ -102,6 +119,21 @@ The easiest way to build the project is using the provided build script:
 meson setup -Dbuild_all_apps=true build
 ninja -C build
 ```
+
+### Build Script vs Manual Meson
+
+**When to use `build.sh`:**
+- ✅ Quick builds with sensible defaults
+- ✅ Automatic dependency checking
+- ✅ Automatic local FFmpeg build for ffmpeg-signer
+- ✅ Simplified command-line options
+- ✅ Better error messages and guidance
+
+**When to use meson directly:**
+- Advanced configuration (e.g., `signingplugin=threaded`)
+- Cross-compilation
+- Integration with other build systems
+- Custom build configurations
 
 ---
 
@@ -142,6 +174,33 @@ meson setup -Dsigner=true -Dsigningplugin=threaded build
 
 # Set installation prefix
 meson setup --prefix=/usr/local -Dbuild_all_apps=true build
+
+# Build FFmpeg signer with local FFmpeg (default)
+meson setup -Dffmpeg_signer=true -Dlocal_ffmpeg=true build
+
+# Build FFmpeg signer with system FFmpeg
+meson setup -Dffmpeg_signer=true -Dlocal_ffmpeg=false build
+```
+
+**Using build.sh (simpler):**
+```bash
+# Debug prints
+./build.sh --all-apps --debug
+
+# FFmpeg signer with local FFmpeg
+./build.sh --ffmpeg-signer
+
+# FFmpeg signer with system FFmpeg
+./build.sh --ffmpeg-signer --system-ffmpeg
+
+# Custom install prefix
+./build.sh --all-apps --prefix /usr/local
+
+# GStreamer signer only
+./build.sh --signer
+
+# Validator only
+./build.sh --validator
 ```
 
 ### Step 3: Compile
@@ -178,9 +237,33 @@ The following meson options are available:
 | `ffmpeg_signer` | boolean | false | Build FFmpeg-based signer application |
 | `build_all_apps` | boolean | false | Build all applications |
 | `parsesei` | boolean | false | Enable SEI parsing and display |
+| `local_ffmpeg` | boolean | true | Build and use local FFmpeg instead of system FFmpeg |
 
 ### Example Configurations
 
+**Using build.sh (recommended):**
+```bash
+# Development build with debug output
+./build.sh --all-apps --debug
+
+# Production build with GStreamer signer and threaded plugin
+./build.sh --signer
+# Note: For threaded plugin, use meson directly: meson setup -Dsigner=true -Dsigningplugin=threaded build
+
+# FFmpeg signer only (with local FFmpeg)
+./build.sh --ffmpeg-signer
+
+# FFmpeg signer with system FFmpeg
+./build.sh --ffmpeg-signer --system-ffmpeg
+
+# Validator only for testing
+./build.sh --validator
+
+# Clean rebuild of everything
+./build.sh --all-apps --clean
+```
+
+**Using meson directly:**
 ```bash
 # Development build with debug output
 meson setup -Dbuild_all_apps=true -Ddebugprints=true -Dparsesei=true build
@@ -194,6 +277,74 @@ meson setup -Dffmpeg_signer=true build
 # Validator only for testing
 meson setup -Dvalidator=true build
 ```
+
+---
+
+## Local FFmpeg Build
+
+The FFmpeg signer application can automatically download, compile, and use a local FFmpeg installation. This is useful when:
+- System FFmpeg packages are missing or incomplete
+- You need a specific FFmpeg version
+- FFmpeg development headers are not available
+
+### Features
+- **Automatic**: FFmpeg is built automatically during project configuration
+- **Isolated**: Local FFmpeg doesn't interfere with system FFmpeg
+- **Optimized**: Minimal build with only H.264/H.265 support (~5 minute build)
+- **Complete**: All required headers including `libavcodec/bsf.h` are present
+
+### Using Local FFmpeg (Default)
+
+```bash
+# Method 1: Use the build script (easiest)
+./build.sh --ffmpeg-signer
+
+# Method 2: Manual meson configuration
+meson setup build -Dffmpeg_signer=true -Dlocal_ffmpeg=true
+ninja -C build
+```
+
+### Pre-building FFmpeg
+
+You can build FFmpeg separately before running meson:
+
+```bash
+cd third_party
+./build_ffmpeg.sh
+cd ..
+meson setup build -Dffmpeg_signer=true
+ninja -C build
+```
+
+### Using System FFmpeg
+
+If you have FFmpeg development packages installed and prefer to use them:
+
+```bash
+# Using build script
+./build.sh --ffmpeg-signer --system-ffmpeg
+
+# Or with meson directly
+meson setup build -Dffmpeg_signer=true -Dlocal_ffmpeg=false
+ninja -C build
+```
+
+### Local FFmpeg Details
+
+When `local_ffmpeg=true` (default):
+- **Downloads**: FFmpeg 6.1.1 source (~10 MB)
+- **Builds**: Minimal configuration with H.264/H.265 only
+- **Installs**: To `third_party/install/` directory
+- **Links**: Automatically sets proper library paths (rpath)
+
+The FFmpeg build includes:
+- H.264 decoder, parser, and bitstream filter
+- H.265 (HEVC) decoder, parser, and bitstream filter  
+- MP4/MOV demuxer for reading video files
+- MP4/MOV muxer for writing signed video files
+- Shared libraries only
+
+For more details, see [third_party/README.md](third_party/README.md).
 
 ---
 
@@ -248,9 +399,11 @@ cd build/examples/apps/ffmpeg-signer
 ./ffmpeg-signer -c h265 input_video.mp4
 ```
 
-**Note**: Both signers require test certificates in `tests/` directory:
-- `ec_signing.key` - Private key
-- `ec_cert_chain.pem` - Certificate chain
+**Note**: 
+- Both signers require test certificates in `tests/` directory:
+  - `ec_signing.key` - Private key
+  - `ec_cert_chain.pem` - Certificate chain
+- If built with `local_ffmpeg=true` (default), the FFmpeg signer automatically uses the locally built FFmpeg libraries - no additional setup needed!
 
 ### Run the Validator
 
@@ -365,6 +518,36 @@ Failed to link demux and parser
 
 **Note**: This is a warning and doesn't prevent signing from working. The signing process will continue and complete successfully.
 
+#### 8. FFmpeg Headers Not Found
+```
+fatal error: libavcodec/bsf.h: No such file or directory
+```
+
+**Solution**: Use local FFmpeg build (default):
+```bash
+# Clean rebuild with local FFmpeg
+./build.sh --ffmpeg-signer --clean
+```
+
+Or install complete FFmpeg development packages:
+```bash
+# Ubuntu/Debian
+sudo apt-get install libavformat-dev libavcodec-dev libavutil-dev
+
+# Then build with system FFmpeg
+./build.sh --ffmpeg-signer --system-ffmpeg
+```
+
+#### 9. FFmpeg Build Fails (nasm/yasm warning)
+```
+nasm/yasm not found or too old
+```
+
+**Solution**: This is just a warning. The build continues without x86 assembly optimizations. If you want to install nasm:
+```bash
+sudo apt-get install nasm
+```
+
 ### Verify Installation
 
 ```bash
@@ -374,11 +557,18 @@ ls -la build/libmedia-signing-framework.so*
 # Check signer
 ls -la build/examples/apps/signer/signer
 
+# Check FFmpeg signer
+ls -la build/examples/apps/ffmpeg-signer/ffmpeg-signer
+
 # Check validator
 ls -la build/examples/apps/validator/validator
 
 # Verify GStreamer plugin
 GST_PLUGIN_PATH=build/examples/apps/signer/gst-plugin gst-inspect-1.0 signing
+
+# Verify FFmpeg signer uses local FFmpeg (if built with local_ffmpeg=true)
+ldd build/examples/apps/ffmpeg-signer/ffmpeg-signer | grep -E "(avcodec|avformat|avutil)"
+# Should show paths to third_party/install/lib/
 ```
 
 ### Getting Help
@@ -388,8 +578,12 @@ If you encounter issues not covered here:
 2. Review application-specific READMEs:
    - [Signer README](examples/apps/signer/README.md)
    - [Validator README](examples/apps/validator/README.md)
+   - [FFmpeg Signer README](examples/apps/ffmpeg-signer/README.md)
 3. Check GitHub Issues
-4. Enable debug output: `-Ddebugprints=true`
+4. Enable debug output: 
+   - With build.sh: `./build.sh --all-apps --debug`
+   - With meson: `-Ddebugprints=true`
+5. Check the [third_party/README.md](third_party/README.md) for FFmpeg build issues
 
 ---
 
@@ -399,12 +593,21 @@ For production deployments:
 
 1. **Build with optimizations** (default):
    ```bash
+   # Using build.sh
+   ./build.sh --all-apps
+   
+   # Or with meson
    meson setup --buildtype=release build
    ninja -C build
    ```
 
 2. **Install to system**:
    ```bash
+   # Using build.sh with install prefix
+   ./build.sh --all-apps --prefix /usr
+   meson install -C build
+   
+   # Or with meson directly
    meson setup --prefix=/usr --buildtype=release build
    ninja -C build
    sudo meson install -C build
@@ -450,6 +653,71 @@ ninja -C build-arm
 
 ---
 
+## Quick Reference
+
+### Common Build Commands
+
+```bash
+# Most common: Build FFmpeg signer with local FFmpeg
+./build.sh --ffmpeg-signer
+
+# Build everything
+./build.sh --all-apps
+
+# Build with system FFmpeg
+./build.sh --ffmpeg-signer --system-ffmpeg
+
+# Clean rebuild
+./build.sh --ffmpeg-signer --clean
+
+# Build for production
+./build.sh --all-apps --prefix /usr/local
+
+# Just the library
+./build.sh
+
+# GStreamer signer only
+./build.sh --signer
+
+# Validator only
+./build.sh --validator
+```
+
+### Checking Your Build
+
+```bash
+# Verify library
+ls -la build/libmedia-signing-framework.so*
+
+# Verify FFmpeg signer
+ls -la build/examples/apps/ffmpeg-signer/ffmpeg-signer
+
+# Check FFmpeg linkage (should show third_party/install/lib)
+ldd build/examples/apps/ffmpeg-signer/ffmpeg-signer | grep av
+
+# Run FFmpeg signer
+export LD_LIBRARY_PATH=build:$LD_LIBRARY_PATH
+./build/examples/apps/ffmpeg-signer/ffmpeg-signer video.mp4
+```
+
+### Troubleshooting Quick Fixes
+
+```bash
+# Missing FFmpeg headers
+./build.sh --ffmpeg-signer --clean
+
+# Reconfigure build
+rm -rf build && ./build.sh --ffmpeg-signer
+
+# Use system FFmpeg instead
+./build.sh --ffmpeg-signer --system-ffmpeg
+
+# Check build options
+./build.sh --help
+```
+
+---
+
 ## Next Steps
 
 - Read the [ONVIF Media Signing Specification](https://www.onvif.org/specs/stream/ONVIF-MediaSigning-Spec.pdf)
@@ -459,4 +727,4 @@ ninja -C build-arm
 
 ---
 
-*Last updated: February 2026*
+*Last updated: March 2026*

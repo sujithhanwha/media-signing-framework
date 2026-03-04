@@ -1,7 +1,3 @@
-ffmpeg_dep = dependency('libavformat', required : false)
-avcodec_dep = dependency('libavcodec', required : false)
-avutil_dep = dependency('libavutil', required : false)
-
 build_ffmpeg_signer = get_option('ffmpeg_signer') or get_option('build_all_apps')
 
 if build_ffmpeg_signer
@@ -9,11 +5,17 @@ if build_ffmpeg_signer
     error('FFmpeg libraries (libavformat, libavcodec, libavutil) are required to build ffmpeg-signer')
   endif
 
+  # Set up rpath for both media-signing-framework and FFmpeg libraries
+  ffmpeg_signer_rpath = oms_lib_dir
+  if get_option('local_ffmpeg')
+    ffmpeg_signer_rpath = ':'.join([oms_lib_dir, ffmpeg_rpath])
+  endif
+
   ffmpeg_signer = executable('ffmpeg-signer',
     'main.c',
     include_directories : [ configinc, omssrcinc ],
-    build_rpath : oms_lib_dir,
-    install_rpath : oms_lib_dir,
+    build_rpath : ffmpeg_signer_rpath,
+    install_rpath : ffmpeg_signer_rpath,
     dependencies : [
       ffmpeg_dep,
       avcodec_dep,

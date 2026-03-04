@@ -26,3 +26,7 @@ option('parsesei',
   type : 'boolean',
   value : false,
   description : 'Parse SEI frames')
+option('local_ffmpeg',
+  type : 'boolean',
+  value : true,
+  description : 'Build and use local FFmpeg instead of system FFmpeg')
