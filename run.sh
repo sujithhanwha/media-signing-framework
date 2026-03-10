@@ -15,8 +15,22 @@ if [ ! -d "$BUILD_DIR" ]; then
 fi
 
 # Set environment variables
-export LD_LIBRARY_PATH="${BUILD_DIR}:${LD_LIBRARY_PATH}"
-export GST_PLUGIN_PATH="${BUILD_DIR}/examples/apps/signer/gst-plugin:${GST_PLUGIN_PATH}"
+# Include local third_party libraries if they exist (for local OpenSSL, GStreamer, FFmpeg)
+LD_LIB_PATH="${BUILD_DIR}"
+if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+    LD_LIB_PATH="${LD_LIB_PATH}:${SCRIPT_DIR}/third_party/install/lib64"
+fi
+if [ -d "${SCRIPT_DIR}/third_party/install/lib" ]; then
+    LD_LIB_PATH="${LD_LIB_PATH}:${SCRIPT_DIR}/third_party/install/lib"
+fi
+export LD_LIBRARY_PATH="${LD_LIB_PATH}:${LD_LIBRARY_PATH}"
+
+# Set GStreamer plugin path (include local GStreamer plugins if available)
+GST_PLUGIN="${BUILD_DIR}/examples/apps/signer/gst-plugin"
+if [ -d "${SCRIPT_DIR}/third_party/install/lib/gstreamer-1.0" ]; then
+    GST_PLUGIN="${SCRIPT_DIR}/third_party/install/lib/gstreamer-1.0:${GST_PLUGIN}"
+fi
+export GST_PLUGIN_PATH="${GST_PLUGIN}:${GST_PLUGIN_PATH}"
 
 # Show usage
 usage() {

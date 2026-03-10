@@ -2,3 +2,7 @@
 VS2022/*.user
 /VS2022/x64
 /VS2022/lib
+
+# Third-party local builds
+/third_party/src/
+/third_party/install/

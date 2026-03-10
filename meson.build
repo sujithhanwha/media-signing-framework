@@ -7,6 +7,13 @@ project('media-signing-framework', 'c',
 
 cc = meson.get_compiler('c')
 
+# Import filesystem module (needed for third_party checks)
+fs = import('fs')
+
+# Build third-party dependencies (FFmpeg, OpenSSL)
+# This must come before dependency lookups to ensure local builds are available
+subdir('third_party')
+
 openssl_dep = dependency('openssl', required : true, version : '>=3.0.0')
 check_dep = dependency('check', required : false)
 
@@ -37,12 +44,6 @@ cdata.set_quoted('VERSION', meson.project_version())
 configure_file(output : 'media-signing-framework.pc', configuration : cdata)
 
 configinc = include_directories('.')
-
-# Import filesystem module
-fs = import('fs')
-
-# Build third-party dependencies (FFmpeg)
-subdir('third_party')
 
 subdir('lib')
 

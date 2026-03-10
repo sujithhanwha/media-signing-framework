@@ -30,3 +30,11 @@ option('local_ffmpeg',
   type : 'boolean',
   value : true,
   description : 'Build and use local FFmpeg instead of system FFmpeg')
+option('local_openssl',
+  type : 'boolean',
+  value : false,
+  description : 'Build and use local OpenSSL instead of system OpenSSL')
+option('local_gstreamer',
+  type : 'boolean',
+  value : false,
+  description : 'Build and use local GStreamer instead of system GStreamer')

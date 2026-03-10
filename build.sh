@@ -39,6 +39,8 @@ DEBUG_PRINTS=false
 CLEAN=false
 INSTALL_PREFIX=""
 LOCAL_FFMPEG=true  # Default to using local FFmpeg
+LOCAL_OPENSSL=false  # Default to using system OpenSSL, fallback to local if not found
+LOCAL_GSTREAMER=false  # Default to using system GStreamer, fallback to local if not found
 
 usage() {
     echo "Usage: $0 [OPTIONS]"
@@ -53,6 +55,10 @@ usage() {
     echo "  -p, --prefix PATH     Installation prefix (default: none)"
     echo "  --local-ffmpeg        Use local FFmpeg build (default)"
     echo "  --system-ffmpeg       Use system FFmpeg instead of local build"
+    echo "  --local-openssl       Force use of local OpenSSL build"
+    echo "  --system-openssl      Force use of system OpenSSL (fail if not found)"
+    echo "  --local-gstreamer     Force use of local GStreamer build"
+    echo "  --system-gstreamer    Force use of system GStreamer (fail if not found)"
     echo "  -h, --help            Show this help message"
     echo ""
     exit 0
@@ -96,6 +102,22 @@ while [[ $# -gt 0 ]]; do
             LOCAL_FFMPEG=false
             shift
             ;;
+        --local-openssl)
+            LOCAL_OPENSSL=true
+            shift
+            ;;
+        --system-openssl)
+            LOCAL_OPENSSL=false
+            shift
+            ;;
+        --local-gstreamer)
+            LOCAL_GSTREAMER=true
+            shift
+            ;;
+        --system-gstreamer)
+            LOCAL_GSTREAMER=false
+            shift
+            ;;
         -h|--help)
             usage
             ;;
@@ -121,15 +143,141 @@ check_dependency ninja
 check_dependency pkg-config
 
 # Check for OpenSSL
-if ! pkg-config --exists openssl; then
-    print_error "OpenSSL not found. Please install OpenSSL 3.0.0 or newer."
+OPENSSL_FOUND=false
+OPENSSL_VERSION_OK=false
+
+if [ "$LOCAL_OPENSSL" = false ]; then
+    if pkg-config --exists openssl; then
+        OPENSSL_VERSION=$(pkg-config --modversion openssl)
+        print_info "Found system OpenSSL version: $OPENSSL_VERSION"
+        
+        # Check if version is >= 3.0.0
+        if pkg-config --atleast-version=3.0.0 openssl; then
+            OPENSSL_FOUND=true
+            OPENSSL_VERSION_OK=true
+            print_info "System OpenSSL version is sufficient (>= 3.0.0)"
+        else
+            print_warning "System OpenSSL version is too old (need >= 3.0.0, found $OPENSSL_VERSION)"
+            print_info "Will use local OpenSSL 3.4 instead"
+            LOCAL_OPENSSL=true
+        fi
+    else
+        print_warning "System OpenSSL not found"
+        print_info "Will use local OpenSSL 3.4 instead"
+        LOCAL_OPENSSL=true
+    fi
+fi
+
+# Build or check local OpenSSL if needed
+if [ "$LOCAL_OPENSSL" = true ]; then
+    # Check for openssl.pc in both lib and lib64
+    OPENSSL_PC_FOUND=false
+    if [ -f "${SCRIPT_DIR}/third_party/install/lib64/pkgconfig/openssl.pc" ]; then
+        OPENSSL_PC_FOUND=true
+    elif [ -f "${SCRIPT_DIR}/third_party/install/lib/pkgconfig/openssl.pc" ]; then
+        OPENSSL_PC_FOUND=true
+    fi
+    
+    if [ "$OPENSSL_PC_FOUND" = false ]; then
+        print_info "Local OpenSSL not found. Building OpenSSL 3.4..."
+        bash "${SCRIPT_DIR}/third_party/build_openssl.sh"
+        if [ $? -ne 0 ]; then
+            print_error "Failed to build OpenSSL."
+            exit 1
+        fi
+    else
+        print_info "Using existing local OpenSSL installation."
+    fi
+    
+    # Set PKG_CONFIG_PATH to use local OpenSSL (add both lib and lib64)
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib64/pkgconfig" ]; then
+        export PKG_CONFIG_PATH="${SCRIPT_DIR}/third_party/install/lib64/pkgconfig:${PKG_CONFIG_PATH}"
+    fi
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib/pkgconfig" ]; then
+        export PKG_CONFIG_PATH="${SCRIPT_DIR}/third_party/install/lib/pkgconfig:${PKG_CONFIG_PATH}"
+    fi
+    
+    # Set LIBRARY_PATH for linking during build
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+        export LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib64:${LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib64:${LD_LIBRARY_PATH}"
+    fi
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib" ]; then
+        export LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib:${LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib:${LD_LIBRARY_PATH}"
+    fi
+    
+    OPENSSL_FOUND=true
+    OPENSSL_VERSION_OK=true
+fi
+
+if [ "$OPENSSL_FOUND" = false ] || [ "$OPENSSL_VERSION_OK" = false ]; then
+    print_error "OpenSSL 3.0.0 or newer is required but not found."
+    print_info "Install OpenSSL 3.0+ or use --local-openssl to build it locally."
     exit 1
 fi
 
 # Check for GStreamer (only if building GStreamer-based apps)
 if [ "$BUILD_APPS" = true ] || [ "$BUILD_SIGNER" = true ] || [ "$BUILD_VALIDATOR" = true ]; then
-    if ! pkg-config --exists gstreamer-1.0; then
-        print_error "GStreamer not found. Please install GStreamer to build GStreamer-based applications."
+    GSTREAMER_FOUND=false
+    
+    if [ "$LOCAL_GSTREAMER" = false ]; then
+        if pkg-config --exists gstreamer-1.0; then
+            GSTREAMER_VERSION=$(pkg-config --modversion gstreamer-1.0)
+            print_info "Found system GStreamer version: $GSTREAMER_VERSION"
+            GSTREAMER_FOUND=true
+        else
+            print_warning "System GStreamer not found"
+            print_info "Will use local GStreamer instead"
+            LOCAL_GSTREAMER=true
+        fi
+    fi
+    
+    # Build or check local GStreamer if needed
+    if [ "$LOCAL_GSTREAMER" = true ]; then
+        # Check for gstreamer-1.0.pc in both lib and lib64
+        GSTREAMER_PC_FOUND=false
+        if [ -f "${SCRIPT_DIR}/third_party/install/lib64/pkgconfig/gstreamer-1.0.pc" ]; then
+            GSTREAMER_PC_FOUND=true
+        elif [ -f "${SCRIPT_DIR}/third_party/install/lib/pkgconfig/gstreamer-1.0.pc" ]; then
+            GSTREAMER_PC_FOUND=true
+        fi
+        
+        if [ "$GSTREAMER_PC_FOUND" = false ]; then
+            print_info "Local GStreamer not found. Building GStreamer..."
+            bash "${SCRIPT_DIR}/third_party/build_gstreamer.sh"
+            if [ $? -ne 0 ]; then
+                print_error "Failed to build GStreamer."
+                exit 1
+            fi
+        else
+            print_info "Using existing local GStreamer installation."
+        fi
+        
+        # Set PKG_CONFIG_PATH to use local GStreamer (add both lib and lib64)
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib64/pkgconfig" ]; then
+            export PKG_CONFIG_PATH="${SCRIPT_DIR}/third_party/install/lib64/pkgconfig:${PKG_CONFIG_PATH}"
+        fi
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib/pkgconfig" ]; then
+            export PKG_CONFIG_PATH="${SCRIPT_DIR}/third_party/install/lib/pkgconfig:${PKG_CONFIG_PATH}"
+        fi
+        
+        # Set LIBRARY_PATH for linking during build
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+            export LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib64:${LIBRARY_PATH}"
+            export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib64:${LD_LIBRARY_PATH}"
+        fi
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib" ]; then
+            export LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib:${LIBRARY_PATH}"
+            export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib:${LD_LIBRARY_PATH}"
+        fi
+        
+        GSTREAMER_FOUND=true
+    fi
+    
+    if [ "$GSTREAMER_FOUND" = false ]; then
+        print_error "GStreamer not found."
+        print_info "Install GStreamer or use --local-gstreamer to build it locally."
         exit 1
     fi
 fi
@@ -165,9 +313,9 @@ print_info "All dependencies found."
 if [ "$CLEAN" = true ]; then
     print_info "Cleaning build directory..."
     rm -rf "$BUILD_DIR"
-    # Also clean FFmpeg if using local build
-    if [ "$LOCAL_FFMPEG" = true ]; then
-        print_info "Cleaning local FFmpeg build..."
+    # Also clean third_party builds if using local builds
+    if [ "$LOCAL_FFMPEG" = true ] || [ "$LOCAL_OPENSSL" = true ] || [ "$LOCAL_GSTREAMER" = true ]; then
+        print_info "Cleaning local third_party builds..."
         rm -rf "${SCRIPT_DIR}/third_party/src" "${SCRIPT_DIR}/third_party/install"
     fi
 fi
@@ -204,6 +352,20 @@ else
     MESON_OPTS="$MESON_OPTS -Dlocal_ffmpeg=false"
 fi
 
+# Set local_openssl option
+if [ "$LOCAL_OPENSSL" = true ]; then
+    MESON_OPTS="$MESON_OPTS -Dlocal_openssl=true"
+else
+    MESON_OPTS="$MESON_OPTS -Dlocal_openssl=false"
+fi
+
+# Set local_gstreamer option
+if [ "$LOCAL_GSTREAMER" = true ]; then
+    MESON_OPTS="$MESON_OPTS -Dlocal_gstreamer=true"
+else
+    MESON_OPTS="$MESON_OPTS -Dlocal_gstreamer=false"
+fi
+
 # Configure with meson
 print_info "Configuring build with meson..."
 if [ -d "$BUILD_DIR" ]; then
@@ -237,23 +399,95 @@ if [ "$BUILD_APPS" = true ] || [ "$BUILD_FFMPEG_SIGNER" = true ]; then
 fi
 
 echo ""
+echo "Dependencies used:"
+if [ "$LOCAL_OPENSSL" = true ]; then
+    echo "  OpenSSL: Local build (third_party/install)"
+else
+    echo "  OpenSSL: System installation"
+fi
+if [ "$LOCAL_GSTREAMER" = true ]; then
+    echo "  GStreamer: Local build (third_party/install)"
+else
+    echo "  GStreamer: System installation"
+fi
+if [ "$LOCAL_FFMPEG" = true ]; then
+    echo "  FFmpeg: Local build (third_party/install)"
+else
+    echo "  FFmpeg: System installation"
+fi
+
+echo ""
 echo "To run the GStreamer signer:"
-echo "  export LD_LIBRARY_PATH=${BUILD_DIR}:\$LD_LIBRARY_PATH"
-echo "  export GST_PLUGIN_PATH=${BUILD_DIR}/examples/apps/signer/gst-plugin:\$GST_PLUGIN_PATH"
+# Build LD_LIBRARY_PATH with local libs if needed
+LDLIBPATH="${BUILD_DIR}"
+if [ "$LOCAL_OPENSSL" = true ] || [ "$LOCAL_GSTREAMER" = true ]; then
+    # Determine lib or lib64
+    LIB_DIR="lib"
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+        LIB_DIR="lib64"
+    fi
+    LDLIBPATH="${LDLIBPATH}:${SCRIPT_DIR}/third_party/install/${LIB_DIR}"
+fi
+echo "  export LD_LIBRARY_PATH=${LDLIBPATH}:\$LD_LIBRARY_PATH"
+if [ "$LOCAL_GSTREAMER" = true ]; then
+    # Determine lib or lib64 for GST_PLUGIN_PATH
+    LIB_DIR="lib"
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+        LIB_DIR="lib64"
+    fi
+    echo "  export GST_PLUGIN_PATH=${SCRIPT_DIR}/third_party/install/${LIB_DIR}/gstreamer-1.0:${BUILD_DIR}/examples/apps/signer/gst-plugin:\$GST_PLUGIN_PATH"
+else
+    echo "  export GST_PLUGIN_PATH=${BUILD_DIR}/examples/apps/signer/gst-plugin:\$GST_PLUGIN_PATH"
+fi
 echo "  ${BUILD_DIR}/examples/apps/signer/signer -c h264 video.mp4"
 echo ""
 echo "To run the FFmpeg signer:"
-echo "  export LD_LIBRARY_PATH=${BUILD_DIR}:\$LD_LIBRARY_PATH"
+# Build LD_LIBRARY_PATH with local libs if needed
+LDLIBPATH="${BUILD_DIR}"
+if [ "$LOCAL_OPENSSL" = true ] || [ "$LOCAL_FFMPEG" = true ]; then
+    # Determine lib or lib64
+    LIB_DIR="lib"
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+        LIB_DIR="lib64"
+    fi
+    LDLIBPATH="${LDLIBPATH}:${SCRIPT_DIR}/third_party/install/${LIB_DIR}"
+fi
+echo "  export LD_LIBRARY_PATH=${LDLIBPATH}:\$LD_LIBRARY_PATH"
 if [ "$LOCAL_FFMPEG" = true ]; then
-    echo "  # (Uses local FFmpeg from third_party/install - no additional setup needed)"
+    echo "  # (Uses local FFmpeg from third_party/install)"
+fi
+if [ "$LOCAL_OPENSSL" = true ]; then
+    echo "  # (Uses local OpenSSL from third_party/install)"
+fi
+if [ "$LOCAL_GSTREAMER" = true ]; then
+    echo "  # (Uses local GStreamer from third_party/install)"
 fi
 echo "  ${BUILD_DIR}/examples/apps/ffmpeg-signer/ffmpeg-signer video.mp4"
 echo ""
 print_info "To run the applications, set the following environment variables:"
 echo ""
-echo "export LD_LIBRARY_PATH=${BUILD_DIR}:\$LD_LIBRARY_PATH"
+# Build LD_LIBRARY_PATH with local libs if needed
+LDLIBPATH="${BUILD_DIR}"
+if [ "$LOCAL_OPENSSL" = true ] || [ "$LOCAL_GSTREAMER" = true ] || [ "$LOCAL_FFMPEG" = true ]; then
+    # Determine lib or lib64
+    LIB_DIR="lib"
+    if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+        LIB_DIR="lib64"
+    fi
+    LDLIBPATH="${LDLIBPATH}:${SCRIPT_DIR}/third_party/install/${LIB_DIR}"
+fi
+echo "export LD_LIBRARY_PATH=${LDLIBPATH}:\$LD_LIBRARY_PATH"
 if [ "$BUILD_APPS" = true ] || [ "$BUILD_SIGNER" = true ]; then
-    echo "export GST_PLUGIN_PATH=${BUILD_DIR}/examples/apps/signer/gst-plugin:\$GST_PLUGIN_PATH"
+    if [ "$LOCAL_GSTREAMER" = true ]; then
+        # Determine lib or lib64 for GST_PLUGIN_PATH
+        LIB_DIR="lib"
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+            LIB_DIR="lib64"
+        fi
+        echo "export GST_PLUGIN_PATH=${SCRIPT_DIR}/third_party/install/${LIB_DIR}/gstreamer-1.0:${BUILD_DIR}/examples/apps/signer/gst-plugin:\$GST_PLUGIN_PATH"
+    else
+        echo "export GST_PLUGIN_PATH=${BUILD_DIR}/examples/apps/signer/gst-plugin:\$GST_PLUGIN_PATH"
+    fi
 fi
 echo ""
 

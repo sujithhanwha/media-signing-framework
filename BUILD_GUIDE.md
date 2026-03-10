@@ -82,6 +82,29 @@ sudo dnf install -y \
     ffmpeg-devel
 ```
 
+### Building Dependencies Locally (Alternative)
+
+If you don't have system packages available or need specific versions, the `third_party/` folder contains scripts to build dependencies locally:
+
+```bash
+cd third_party
+
+# Build OpenSSL locally (if system version < 3.0.0)
+./build_openssl.sh
+
+# Build FFmpeg locally (for ffmpeg-signer application)
+./build_ffmpeg.sh
+
+# Build GStreamer locally (for GStreamer applications)
+./build_gstreamer.sh
+
+cd ..
+```
+
+**Note**: The build system can automatically handle these dependencies, so manual building is optional. See the [Local FFmpeg Build](#local-ffmpeg-build) section for more details.
+
+For complete documentation on third-party dependencies, see [third_party/README.md](third_party/README.md).
+
 ---
 
 ## Quick Start
@@ -138,6 +161,25 @@ ninja -C build
 ---
 
 ## Detailed Build Instructions
+
+### Step 0: Build Third-Party Dependencies (Optional)
+
+If you prefer to build dependencies manually before building the main project, or if you're troubleshooting dependency issues:
+
+```bash
+cd third_party
+
+# Build required dependencies as needed
+./build_openssl.sh    # If system OpenSSL < 3.0.0
+./build_ffmpeg.sh     # For ffmpeg-signer application
+./build_gstreamer.sh  # For GStreamer applications (if not using system packages)
+
+cd ..
+```
+
+**Note**: This step is optional. The build system can automatically download and build these dependencies when needed. However, pre-building them gives you more control and can help diagnose build issues.
+
+For more information, see [third_party/README.md](third_party/README.md).
 
 ### Step 1: Clone the Repository
 ```bash
