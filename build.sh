@@ -294,7 +294,15 @@ if [ "$BUILD_APPS" = true ] || [ "$BUILD_FFMPEG_SIGNER" = true ]; then
         fi
     else
         # Using local FFmpeg - check if it needs to be built
-        if [ ! -d "${SCRIPT_DIR}/third_party/install" ]; then
+        # Check for libavformat.pc in both lib and lib64
+        FFMPEG_PC_FOUND=false
+        if [ -f "${SCRIPT_DIR}/third_party/install/lib64/pkgconfig/libavformat.pc" ]; then
+            FFMPEG_PC_FOUND=true
+        elif [ -f "${SCRIPT_DIR}/third_party/install/lib/pkgconfig/libavformat.pc" ]; then
+            FFMPEG_PC_FOUND=true
+        fi
+        
+        if [ "$FFMPEG_PC_FOUND" = false ]; then
             print_info "Local FFmpeg not found. Building FFmpeg..."
             bash "${SCRIPT_DIR}/third_party/build_ffmpeg.sh"
             if [ $? -ne 0 ]; then
@@ -303,6 +311,24 @@ if [ "$BUILD_APPS" = true ] || [ "$BUILD_FFMPEG_SIGNER" = true ]; then
             fi
         else
             print_info "Using existing local FFmpeg installation."
+        fi
+        
+        # Set PKG_CONFIG_PATH to use local FFmpeg (add both lib and lib64)
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib64/pkgconfig" ]; then
+            export PKG_CONFIG_PATH="${SCRIPT_DIR}/third_party/install/lib64/pkgconfig:${PKG_CONFIG_PATH}"
+        fi
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib/pkgconfig" ]; then
+            export PKG_CONFIG_PATH="${SCRIPT_DIR}/third_party/install/lib/pkgconfig:${PKG_CONFIG_PATH}"
+        fi
+        
+        # Set LIBRARY_PATH for linking during build
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib64" ]; then
+            export LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib64:${LIBRARY_PATH}"
+            export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib64:${LD_LIBRARY_PATH}"
+        fi
+        if [ -d "${SCRIPT_DIR}/third_party/install/lib" ]; then
+            export LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib:${LIBRARY_PATH}"
+            export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/install/lib:${LD_LIBRARY_PATH}"
         fi
     fi
 fi
