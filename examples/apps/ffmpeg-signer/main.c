@@ -34,7 +34,10 @@
  */
 
 #include <libavcodec/avcodec.h>
+// bsf.h is available in FFmpeg 5.1+, but BSF API is in avcodec.h for older versions
+#if LIBAVCODEC_VERSION_MAJOR >= 60
 #include <libavcodec/bsf.h>
+#endif
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
 #include <stdbool.h>

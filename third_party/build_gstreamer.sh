@@ -141,14 +141,19 @@ for COMPONENT in "${COMPONENTS[@]}"; do
         
         # Component-specific options
         EXTRA_OPTS=""
+        INTROSPECTION_OPT=""
         case "${COMP_NAME}" in
+            gstreamer|gst-plugins-base)
+                # introspection option only available in core gstreamer and base plugins
+                INTROSPECTION_OPT="-Dintrospection=disabled"
+                ;;
             gst-plugins-good)
-                # For gst-plugins-good: enable only essential plugins for MP4/H.264/H.265
-                EXTRA_OPTS="-Dqt5=disabled -Dgtk3=disabled -Dximagesrc=disabled -Djpeg=disabled -Dpng=disabled"
+                # For gst-plugins-good: disable Qt5 plugin (avoid Qt dependency)
+                EXTRA_OPTS="-Dqt5=disabled"
                 ;;
             gst-plugins-bad)
-                # For gst-plugins-bad: enable only essential plugins for H.264/H.265 parsing
-                EXTRA_OPTS="-Dgtk3=disabled -Dwayland=disabled -Dx11=disabled -Dopengl=disabled"
+                # For gst-plugins-bad: disable X11 and Wayland support to reduce dependencies
+                EXTRA_OPTS="-Dwayland=disabled -Dx11=disabled"
                 ;;
         esac
         
@@ -161,7 +166,7 @@ for COMPONENT in "${COMPONENTS[@]}"; do
             -Dtests=disabled \
             -Dexamples=disabled \
             -Ddoc=disabled \
-            -Dintrospection=disabled \
+            ${INTROSPECTION_OPT} \
             -Dnls=disabled \
             ${EXTRA_OPTS} \
             2>&1 | grep -v "WARNING: Running the setup command" || true

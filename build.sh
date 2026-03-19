@@ -37,6 +37,7 @@ BUILD_VALIDATOR=false
 BUILD_FFMPEG_SIGNER=false
 DEBUG_PRINTS=false
 CLEAN=false
+CLEAN_ONLY=false
 INSTALL_PREFIX=""
 LOCAL_FFMPEG=true  # Default to using local FFmpeg
 LOCAL_OPENSSL=false  # Default to using system OpenSSL, fallback to local if not found
@@ -52,6 +53,7 @@ usage() {
     echo "  -f, --ffmpeg-signer   Build FFmpeg-based signer application"
     echo "  -d, --debug           Enable debug prints"
     echo "  -c, --clean           Clean build directory before building"
+    echo "  --clean-only          Clean build and third_party directories and exit (no build)"
     echo "  -p, --prefix PATH     Installation prefix (default: none)"
     echo "  --local-ffmpeg        Use local FFmpeg build (default)"
     echo "  --system-ffmpeg       Use system FFmpeg instead of local build"
@@ -87,6 +89,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -c|--clean)
+            CLEAN=true
+            shift
+            ;;
+        --clean-only)
+            CLEAN_ONLY=true
             CLEAN=true
             shift
             ;;
@@ -343,6 +350,12 @@ if [ "$CLEAN" = true ]; then
     if [ "$LOCAL_FFMPEG" = true ] || [ "$LOCAL_OPENSSL" = true ] || [ "$LOCAL_GSTREAMER" = true ]; then
         print_info "Cleaning local third_party builds..."
         rm -rf "${SCRIPT_DIR}/third_party/src" "${SCRIPT_DIR}/third_party/install"
+    fi
+    
+    # If clean-only, exit here
+    if [ "$CLEAN_ONLY" = true ]; then
+        print_info "Clean complete. Exiting without building."
+        exit 0
     fi
 fi
 
